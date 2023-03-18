@@ -1,50 +1,74 @@
 from pkg.plugin.models import *
 from pkg.plugin.host import EventContext, PluginHost
+import json
+import requests
+import traceback
+import time
 
 """
-在收到私聊或群聊消息"hello"时，回复"hello, <发送者id>!"或"hello, everyone!"
+获取文心一言排队人数
 """
 
+def get_cnt() -> int:
+    # 读取yiyancookies.json
+    with open("yiyancookies.json", "r", encoding="utf-8") as f:
+        cookies = json.loads(f.read())
+    
+    # 包装成requests的cookies
+    cookies = {i["name"]: i["value"] for i in cookies}
 
-# 注册插件
-@register(name="Hello", description="hello world", version="0.1", author="RockChinQ")
-class HelloPlugin(Plugin):
+    # yiyan.baidu.com/eb/user/wait/cnt
+    resp = requests.post("https://yiyan.baidu.com/eb/user/wait/cnt", 
+        cookies=cookies,
+        data={
+            "timestamp": time.time()*1000,
+            "deviceType": "pc",
+        },
+        headers={
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Host": "yiyan.baidu.com",
+            "Origin": "https://yiyan.baidu.com/welcome",
+            "sec-ch-ua": '"Microsoft Edge";v="111", "Not(A:Brand";v="8", "Chromium";v="111"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": "Windows",
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Content-Type": "application/json",
+            "Content-length": "45",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36 Edg/111.0.1661.41"
+        }
+    )
 
-    # 插件加载时触发
-    # plugin_host (pkg.plugin.host.PluginHost) 提供了与主程序交互的一些方法，详细请查看其源码
+    # 返回排队人数
+    resp_json = resp.json()
+    print(resp_json)
+
+    return resp_json["data"]
+
+
+@register(name="WaitYiYan", description="获取文心一言排队人数", version="0.1", author="RockChinQ")
+class WaitYiYanPlugin(Plugin):
+
     def __init__(self, plugin_host: PluginHost):
         pass
 
-    # 当收到个人消息时触发
-    @on(PersonNormalMessageReceived)
-    def person_normal_message_received(self, event: EventContext, **kwargs):
-        msg = kwargs['text_message']
-        if msg == "hello":  # 如果消息为hello
+    # 私聊发送指令
+    @on(PersonCommandSent)
+    def person_command_sent(self, event: EventContext, **kwargs):
+        cmd = kwargs['command']
 
-            # 输出调试信息
-            logging.debug("hello, {}".format(kwargs['sender_id']))
+        if cmd == "wyy":
+            try:
+                # 获取排队人数
+                cnt = get_cnt()
+                event.add_return("reply", ["当前排队人数为：{}人".format(cnt)])
+                event.prevent_default()
+                event.prevent_postorder()
+            except Exception as e:
+                event.add_return("reply", ["获取失败: \n{}".format(traceback.format_exc())])
+                event.prevent_default()
+                event.prevent_postorder()
 
-            # 回复消息 "hello, <发送者id>!"
-            event.add_return("reply", ["hello, {}!".format(kwargs['sender_id'])])
-
-            # 阻止该事件默认行为（向接口获取回复）
-            event.prevent_default()
-
-    # 当收到群消息时触发
-    @on(GroupNormalMessageReceived)
-    def group_normal_message_received(self, event: EventContext, **kwargs):
-        msg = kwargs['text_message']
-        if msg == "hello":  # 如果消息为hello
-
-            # 输出调试信息
-            logging.debug("hello, {}".format(kwargs['sender_id']))
-
-            # 回复消息 "hello, everyone!"
-            event.add_return("reply", ["hello, everyone!"])
-
-            # 阻止该事件默认行为（向接口获取回复）
-            event.prevent_default()
-
-    # 插件卸载时触发
     def __del__(self):
         pass
